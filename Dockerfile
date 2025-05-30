@@ -35,18 +35,20 @@ RUN cd /usr/src && npm i isolated-vm@5.0.1
 
 RUN pnpm store add @tsconfig/node18@1.0.0
 RUN pnpm store add @types/node@18.17.1
-
 RUN pnpm store add typescript@4.9.4
 
 ### STAGE 1: Build ###
 FROM base AS build
+
+# Set environment memory limit to avoid crashes
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 
 # Set up backend
 WORKDIR /usr/src/app
 COPY . .
 
 COPY .npmrc package.json package-lock.json ./
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 RUN npx nx run-many --target=build --projects=server-api --configuration production
 RUN npx nx run-many --target=build --projects=react-ui
