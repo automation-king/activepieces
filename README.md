@@ -45,7 +45,7 @@ src="https://github.com/activepieces/activepieces/assets/1812998/76c97441-c285-4
 
 <br>
 <br>
-
+ 
 # 🤯 Welcome to Activepieces
 
 All-in-one AI automation designed to be **extensible** through a **type-safe** pieces framework written in **TypeScript**.
