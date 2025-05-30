@@ -59,16 +59,12 @@ RUN npm config set fetch-retries 5 && \
     npm install --legacy-peer-deps --no-audit --no-fund || \
     (npm cache clean --force && npm install --legacy-peer-deps --no-audit --no-fund)
 
-
 # Now copy the full project
 COPY . .
 
 # Build backend and frontend
 RUN npx nx run-many --target=build --projects=server-api --configuration production
 RUN npx nx run-many --target=build --projects=react-ui
-
-# Install backend production dependencies
-RUN cd dist/packages/server/api && npm install --production --force
 
 ### STAGE 2: Run ###
 FROM base AS run
@@ -92,7 +88,8 @@ COPY --from=build /usr/src/app/dist/packages/engine/ /usr/src/app/dist/packages/
 COPY --from=build /usr/src/app/dist/packages/server/ /usr/src/app/dist/packages/server/
 COPY --from=build /usr/src/app/dist/packages/shared/ /usr/src/app/dist/packages/shared/
 
-RUN cd /usr/src/app/dist/packages/server/api/ && npm install --production --force
+# Copy full node_modules from build stage to ensure all deps (like write-file-atomic) are included
+COPY --from=build /usr/src/app/node_modules ./node_modules
 
 # Copy project packages for runtime access
 COPY --from=build /usr/src/app/packages packages
