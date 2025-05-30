@@ -15,6 +15,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         procps && \
     yarn config set python /usr/bin/python3 && \
     npm install -g node-gyp
+
 RUN npm i -g npm@9.9.3 pnpm@9.15.0
 
 # Set the locale
@@ -41,15 +42,24 @@ RUN pnpm store add typescript@4.9.4
 FROM base AS build
 
 # Set environment memory limit to avoid crashes
-ENV NODE_OPTIONS="--max-old-space-size=2048"
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 
-# Set up backend
 WORKDIR /usr/src/app
+
+# Copy install-related files early to leverage Docker cache
+COPY .npmrc package.json package-lock.json ./
+
+# More resilient install
+RUN npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm install --legacy-peer-deps --no-audit --no-fund || \
+    (npm cache clean --force && npm install --legacy-peer-deps --no-audit --no-fund)
+
+# Now copy the full project
 COPY . .
 
-COPY .npmrc package.json package-lock.json ./
-RUN npm install --legacy-peer-deps
-
+# Build backend and frontend
 RUN npx nx run-many --target=build --projects=server-api --configuration production
 RUN npx nx run-many --target=build --projects=react-ui
 
@@ -59,7 +69,6 @@ RUN cd dist/packages/server/api && npm install --production --force
 ### STAGE 2: Run ###
 FROM base AS run
 
-# Set up backend
 WORKDIR /usr/src/app
 
 COPY packages/server/api/src/assets/default.cf /usr/local/etc/isolate
@@ -67,14 +76,12 @@ COPY packages/server/api/src/assets/default.cf /usr/local/etc/isolate
 # Install Nginx and gettext for envsubst
 RUN apt-get update && apt-get install -y nginx gettext
 
-# Copy Nginx configuration template
 COPY nginx.react.conf /etc/nginx/nginx.conf
-
 COPY --from=build /usr/src/app/LICENSE .
 
-RUN mkdir -p /usr/src/app/dist/packages/server/
-RUN mkdir -p /usr/src/app/dist/packages/engine/
-RUN mkdir -p /usr/src/app/dist/packages/shared/
+RUN mkdir -p /usr/src/app/dist/packages/server/ \
+    && mkdir -p /usr/src/app/dist/packages/engine/ \
+    && mkdir -p /usr/src/app/dist/packages/shared/
 
 # Copy Output files to appropriate directory from build stage
 COPY --from=build /usr/src/app/dist/packages/engine/ /usr/src/app/dist/packages/engine/
@@ -83,14 +90,15 @@ COPY --from=build /usr/src/app/dist/packages/shared/ /usr/src/app/dist/packages/
 
 RUN cd /usr/src/app/dist/packages/server/api/ && npm install --production --force
 
-# Copy Output files to appropriate directory from build stage
+# Copy project packages for runtime access
 COPY --from=build /usr/src/app/packages packages
-# Copy frontend files to Nginx document root directory from build stage
+
+# Serve frontend via Nginx
 COPY --from=build /usr/src/app/dist/packages/react-ui /usr/share/nginx/html/
 
 LABEL service=activepieces
 
-# Set up entrypoint script
+# Entrypoint
 COPY docker-entrypoint.sh .
 RUN chmod +x docker-entrypoint.sh
 ENTRYPOINT ["./docker-entrypoint.sh"]
