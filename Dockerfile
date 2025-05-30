@@ -49,12 +49,16 @@ WORKDIR /usr/src/app
 # Copy install-related files early to leverage Docker cache
 COPY .npmrc package.json package-lock.json ./
 
-# More resilient install
+# More resilient install + fix esbuild platform issue
+ENV npm_config_arch=x64
+ENV npm_config_platform=linux
+
 RUN npm config set fetch-retries 5 && \
     npm config set fetch-retry-mintimeout 20000 && \
     npm config set fetch-retry-maxtimeout 120000 && \
     npm install --legacy-peer-deps --no-audit --no-fund || \
     (npm cache clean --force && npm install --legacy-peer-deps --no-audit --no-fund)
+
 
 # Now copy the full project
 COPY . .
